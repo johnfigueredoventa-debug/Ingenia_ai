@@ -35,7 +35,7 @@ def get_api_key():
 def get_gemini_client(api_key):
     return genai.Client(api_key=api_key)
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.8-flash"
 
 SYSTEM_PROMPT = """
 Eres INGENIA AI, un asistente técnico en español especializado en Ingeniería Civil,
