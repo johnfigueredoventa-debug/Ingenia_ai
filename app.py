@@ -1,32 +1,37 @@
 import os
 import json
+import time
+from groq import Groq
 from datetime import date
 
 import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="INGENIA AI 2.0", page_icon="📐", layout="wide")
+st.set_page_config(page_title="INGENIA AI 3.0", page_icon="📐", layout="wide")
 
 # --------------------------- ESTILO -----------------------------------------
 st.markdown("""
 <style>
-.stApp {background:#f4f7fb}
+
 [data-testid="stSidebar"] {background:#10243a}
-[data-testid="stSidebar"] * {color:#fff}
+[data-testid="stSidebar"] {background:#10243a}
+[data-testid="stSidebar"] h2, [data-testid="stSidebar"] label, [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {color:#fff}
+[data-testid="stSidebar"] [data-baseweb="select"] * {color:#172b40}
+[data-testid="stSidebar"] [data-testid="stAlert"] * {color:#172b40}
 .hero {padding:25px;border-radius:16px;background:linear-gradient(120deg,#10243a,#246b9c);color:white}
 .hero h1 {color:white;margin:0}
 .hero p {color:#e0edf7;margin-bottom:0}
-div[data-testid="stMetric"] {background:white;padding:12px;border-radius:12px;border:1px solid #e3eaf1}
+div[data-testid="stMetric"] {padding:12px;border-radius:12px;border:1px solid #e3eaf1}
 .small-note {font-size:0.85rem;color:#64748b}
 </style>
 """, unsafe_allow_html=True)
 
 # --------------------------- CONFIGURACIÓN SEGURA ---------------------------
-def get_api_key():
-    key = os.getenv("GEMINI_API_KEY", "")
+def get_api_key(name):
+    key = os.getenv(name, "")
     try:
-        key = st.secrets.get("GEMINI_API_KEY", key)
+        key = st.secrets.get(name, key)
     except Exception:
         pass
     return key.strip() if key else ""
@@ -36,6 +41,7 @@ def get_gemini_client(api_key):
     return genai.Client(api_key=api_key)
 
 MODEL = "gemini-3.8-flash"
+GROQ_MODEL = "openai/gpt-oss-120b"
 
 SYSTEM_PROMPT = """
 Eres INGENIA AI, un asistente técnico en español especializado en Ingeniería Civil,
@@ -57,11 +63,34 @@ Reglas de trabajo:
 """
 
 def call_ai(api_key, prompt, history=None):
-    client = get_gemini_client(api_key)
-    contents = [types.Content(role="model" if m["role"] == "assistant" else "user", parts=[types.Part.from_text(text=m["content"])]) for m in (history or [])]
-    contents.append(types.Content(role="user", parts=[types.Part.from_text(text=prompt)]))
-    response = client.models.generate_content(model=MODEL, contents=contents, config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT))
-    return response.text or "No se recibió una respuesta de la IA."
+    history = history or []
+    failures = []
+    for provider, key in [("Groq", get_api_key("GROQ_API_KEY")), ("Gemini", get_api_key("GEMINI_API_KEY"))]:
+        if not key:
+            continue
+        for attempt in range(2):
+            try:
+                if provider == "Groq":
+                    client = Groq(api_key=key, timeout=30, max_retries=0)
+                    result = client.chat.completions.create(model=GROQ_MODEL, messages=[{"role":"system","content":SYSTEM_PROMPT}, *history, {"role":"user","content":prompt}])
+                    answer = result.choices[0].message.content
+                else:
+                    client = get_gemini_client(key)
+                    contents = [types.Content(role="model" if m["role"] == "assistant" else "user", parts=[types.Part.from_text(text=m["content"])]) for m in history]
+                    contents.append(types.Content(role="user", parts=[types.Part.from_text(text=prompt)]))
+                    answer = client.models.generate_content(model=MODEL, contents=contents, config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT)).text
+                if not answer or not answer.strip():
+                    raise ValueError("Respuesta vacía")
+                st.caption("Respuesta generada mediante " + provider)
+                return answer
+            except Exception as exc:
+                code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+                failures.append(f"{provider}: {code if isinstance(code, int) else 'respuesta no disponible'}")
+                if attempt == 0 and code in (429, 500, 502, 503, 504):
+                    time.sleep(2)
+                else:
+                    break
+    raise RuntimeError("No se pudo generar una respuesta. " + ("; ".join(failures) or "Configura una clave API.") + ". Intenta más tarde.")
 
 
 def show_ai_output(label, text):
@@ -77,21 +106,29 @@ def show_ai_output(label, text):
 
 # --------------------------- BARRA LATERAL ----------------------------------
 with st.sidebar:
-    st.markdown("## 📐 INGENIA AI 2.0")
+    st.markdown("## 📐 INGENIA AI 3.0")
     st.caption("INGENIERÍA · CONSTRUCCIÓN · CAD · BIM")
     st.info("Asistente técnico con IA")
     moneda = st.selectbox("Moneda", ["PEN (S/)", "USD ($)", "EUR (€)"])
     st.markdown("---")
-    api_key = get_api_key()
-    if api_key:
-        st.success("Clave Gemini configurada")
-    else:
-        st.warning("Falta configurar GEMINI_API_KEY")
-    st.caption("Modelo: " + MODEL)
+    groq_key = get_api_key("GROQ_API_KEY")
+    gemini_key = get_api_key("GEMINI_API_KEY")
+    api_key = bool(groq_key or gemini_key)
+    st.write("Groq: " + ("clave configurada" if groq_key else "sin clave"))
+    st.write("Gemini: " + ("clave configurada" if gemini_key else "sin clave"))
+    st.caption("Principal: " + GROQ_MODEL)
+    st.caption("Respaldo: " + MODEL)
+    st.caption("Clave configurada no significa conexión verificada.")
+    if st.button("Probar conexión IA", disabled=not api_key):
+        try:
+            with st.spinner("Probando proveedores..."):
+                st.success(call_ai(api_key, "Responde únicamente: conexión correcta."))
+        except Exception as exc:
+            st.error(str(exc))
 
 # --------------------------- CABECERA ---------------------------------------
 st.markdown(
-    '<div class="hero"><h1>INGENIA AI 2.0</h1>'
+    '<div class="hero"><h1>INGENIA AI 3.0</h1>'
     '<p>Asistente inteligente para proyectos de Ingeniería Civil</p></div>',
     unsafe_allow_html=True,
 )
@@ -119,7 +156,7 @@ with inicio:
     a.metric("Módulos", "5")
     b.metric("Proyecto activo", proyecto[:18] or "Sin nombre")
     c.metric("Fecha", date.today().strftime("%d/%m/%Y"))
-    st.markdown("### Funciones de INGENIA AI 2.0")
+    st.markdown("### Funciones de INGENIA AI 3.0")
     st.write("- Consultar dudas técnicas con un asistente de IA.")
     st.write("- Preparar borradores de informes técnicos.")
     st.write("- Analizar observaciones de obra y datos de avance.")
@@ -264,6 +301,7 @@ with bim:
 with asistente:
     st.subheader("Asistente técnico INGENIA AI")
     st.caption("Chat técnico con contexto del proyecto durante esta sesión.")
+    st.warning("No introduzcas información confidencial. Las consultas se envían a proveedores externos de IA.")
     area = st.selectbox("Área de consulta", [
         "Ingeniería Civil", "Estructuras", "Geotecnia y suelos",
         "Construcción y obra", "Materiales", "Costos y programación",
@@ -277,7 +315,7 @@ with asistente:
     prompt_user = st.chat_input("Escribe tu consulta técnica...")
     if prompt_user:
         if not api_key:
-            st.error("La IA aún no está configurada. El administrador debe agregar GEMINI_API_KEY en los secretos de Streamlit.")
+            st.error("La IA aún no está configurada. El administrador debe agregar GROQ_API_KEY o GEMINI_API_KEY en los secretos de Streamlit.")
         else:
             context = (
                 f"Contexto del proyecto: {proyecto}. Responsable/área: {responsable}. "
@@ -297,10 +335,11 @@ with asistente:
                     st.markdown(answer)
                 st.session_state.chat_history.append({"role": "assistant", "content": answer})
             except Exception as e:
-                st.error(f"Error al consultar Gemini: {e}")
+                st.error(f"Error al consultar la IA: {e}")
                 st.session_state.chat_history.pop()
     if st.button("Limpiar conversación"):
         st.session_state.chat_history = []
         st.rerun()
 
-st.caption("INGENIA AI 2.0 · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
+st.caption("INGENIA AI 3.0 · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
+
