@@ -12,7 +12,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="INGENIA AI 4.3.1 PRO", page_icon="📐", layout="wide")
+st.set_page_config(page_title="INGENIA AI 4.4 PRO", page_icon="📐", layout="wide")
 
 # --------------------------- ESTILO -----------------------------------------
 st.markdown("""
@@ -105,16 +105,107 @@ def call_ai(api_key, prompt, history=None, output_limit=4000):
     raise RuntimeError("No se pudo generar una respuesta. " + ("; ".join(failures) or "Configura una clave API.") + ". Intenta más tarde.")
 
 
-def show_ai_output(label, text):
-    st.markdown(f"### {label}")
+def export_blocks(text):
+    """Convert common Markdown headings, lists and pipe tables without changing values."""
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith('|') and i+1 < len(lines) and re.match(r'^\s*\|?\s*:?-{3,}', lines[i+1]):
+            rows = [[c.strip() for c in line.strip('|').split('|')]]
+            i += 2
+            while i < len(lines) and lines[i].strip().startswith('|'):
+                rows.append([c.strip() for c in lines[i].strip().strip('|').split('|')]); i += 1
+            n = len(rows[0])
+            yield 'table', [r[:n]+['']*max(0,n-len(r)) for r in rows]
+            continue
+        if line:
+            yield ('heading' if line.startswith('#') else 'text'), line.lstrip('#').strip()
+        i += 1
+
+
+def export_report(label, text, project, owner, fmt):
+    from io import BytesIO
+    import html
+    import unicodedata
+    def clean(s):
+        return str(s).replace('**','').replace('`','').replace('\u202f',' ').replace('\u00a0',' ')
+    meta = [f'Proyecto: {project}', f'Responsable / área: {owner}', f'Fecha de exportación: {date.today().isoformat()}']
+    warning = 'BORRADOR DE APOYO — Verificar datos, cálculos, citas y normativa vigente con un profesional competente. No constituye certificación técnica.'
+    out = BytesIO()
+    if fmt == 'docx':
+        from docx import Document
+        from docx.shared import Inches, Pt
+        from docx.enum.section import WD_ORIENT
+        from docx.oxml import OxmlElement
+        doc = Document()
+        sec = doc.sections[0]
+        sec.orientation = WD_ORIENT.LANDSCAPE
+        sec.page_width, sec.page_height = Inches(11.69), Inches(8.27)
+        sec.left_margin = sec.right_margin = Inches(.65)
+        sec.top_margin = sec.bottom_margin = Inches(.65)
+        doc.styles['Normal'].font.name = 'Calibri'
+        doc.styles['Normal'].font.size = Pt(10)
+        sec.header.paragraphs[0].text = 'INGENIA AI 4.4 PRO | Ingeniería Civil'
+        doc.add_heading(label, 0)
+        for m in meta: doc.add_paragraph(m)
+        doc.add_paragraph(warning)
+        for kind, value in export_blocks(text):
+            if kind == 'table':
+                t = doc.add_table(rows=0, cols=len(value[0])); t.style = 'Table Grid'
+                for j, row in enumerate(value):
+                    rr = t.add_row()
+                    if j == 0: rr._tr.get_or_add_trPr().append(OxmlElement('w:tblHeader'))
+                    for cell, v in zip(rr.cells,row):
+                        cell.text = clean(v)
+                        for p in cell.paragraphs:
+                            for run in p.runs: run.font.size = Pt(9); run.bold = j == 0
+            elif kind == 'heading': doc.add_heading(clean(value), level=2)
+            else: doc.add_paragraph(clean(value))
+        doc.save(out)
+    else:
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, LongTable, TableStyle
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        import reportlab
+        fontdir = Path(reportlab.__file__).parent / 'fonts'
+        pdfmetrics.registerFont(TTFont('IngeniaVera', str(fontdir/'Vera.ttf')))
+        styles = getSampleStyleSheet()
+        for name in ['Normal','Title','Heading2']: styles[name].fontName = 'IngeniaVera'
+        small = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10, splitLongWords=True)
+        def p(s, style='Normal'):
+            return Paragraph(html.escape(clean(s)), styles[style] if isinstance(style,str) else style)
+        story = [p('INGENIA AI 4.4 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
+        for kind,value in export_blocks(text):
+            if kind == 'table':
+                width = landscape(A4)[0]-72
+                table = LongTable([[p(v,small) for v in row] for row in value], colWidths=[width/len(value[0])]*len(value[0]), repeatRows=1, splitInRow=1)
+                table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#DCE8F2')),('GRID',(0,0),(-1,-1),.35,colors.grey),('VALIGN',(0,0),(-1,-1),'TOP')]))
+                story.extend([table,Spacer(1,8)])
+            else: story.extend([p(value,'Heading2' if kind=='heading' else 'Normal'),Spacer(1,4)])
+        def footer(c,d):
+            c.setFont('IngeniaVera',8); c.drawString(36,20,'INGENIA AI | Borrador de apoyo'); c.drawRightString(landscape(A4)[0]-36,20,str(d.page))
+        SimpleDocTemplate(out,pagesize=landscape(A4),leftMargin=36,rightMargin=36,topMargin=36,bottomMargin=36).build(story,onFirstPage=footer,onLaterPages=footer)
+    return out.getvalue()
+
+
+def show_ai_output(label, text, export_text=None):
+    st.markdown(f'### {label}')
     st.markdown(text)
-    st.download_button(
-        "⬇️ Descargar respuesta (.md)",
-        data=text,
-        file_name="ingenia_ai_respuesta.md",
-        mime="text/markdown",
-        key=f"download_{label}_{len(text)}",
-    )
+    content = export_text if export_text is not None else text
+    st.download_button('Descargar respuesta (.md)', content, file_name='ingenia_ai_respuesta.md', mime='text/markdown', key=f'download_{label}_{len(text)}')
+    if label in ('Borrador de informe','Respuesta normativa'):
+        cols = st.columns(2)
+        for col, fmt, mime in zip(cols, ['docx','pdf'], ['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/pdf']):
+            with col:
+                try:
+                    data = export_report(label, content, proyecto, responsable, fmt)
+                    st.download_button(f'Descargar {"Word" if fmt=="docx" else "PDF"}', data, file_name=f'ingenia_informe.{fmt}', mime=mime, key=f'export_{label}_{fmt}')
+                except Exception as exc:
+                    st.warning(f'No se pudo preparar {fmt.upper()}: {exc}')
 
 # --------------------------- BIBLIOTECA NORMATIVA ---------------------------
 NORM_DIR = Path(__file__).resolve().parent / "normativa"
@@ -192,7 +283,7 @@ def exact_passages(num, files):
 
 # --------------------------- BARRA LATERAL ----------------------------------
 with st.sidebar:
-    st.markdown("## 📐 INGENIA AI 4.3.1 PRO")
+    st.markdown("## 📐 INGENIA AI 4.4 PRO")
     st.caption("INGENIERÍA · CONSTRUCCIÓN · CAD · BIM")
     st.info("Asistente técnico con IA")
     moneda = st.selectbox("Moneda", ["PEN (S/)", "USD ($)", "EUR (€)"])
@@ -214,7 +305,7 @@ with st.sidebar:
 
 # --------------------------- CABECERA ---------------------------------------
 st.markdown(
-    '<div class="hero"><h1>INGENIA AI 4.3.1 PRO</h1>'
+    '<div class="hero"><h1>INGENIA AI 4.4 PRO</h1>'
     '<p>Asistente inteligente para proyectos de Ingeniería Civil</p></div>',
     unsafe_allow_html=True,
 )
@@ -242,7 +333,7 @@ with inicio:
     a.metric("Módulos", "6")
     b.metric("Proyecto activo", proyecto[:18] or "Sin nombre")
     c.metric("Fecha", date.today().strftime("%d/%m/%Y"))
-    st.markdown("### Funciones de INGENIA AI 4.3.1 PRO")
+    st.markdown("### Funciones de INGENIA AI 4.4 PRO")
     st.write("- Consultar dudas técnicas con un asistente de IA.")
     st.write("- Preparar borradores de informes técnicos.")
     st.write("- Analizar observaciones de obra y datos de avance.")
@@ -487,7 +578,7 @@ with normativa:
                     st.error("No se pudo completar la consulta: " + str(exc))
         if st.session_state.get("norm_result"):
             answer, passages = st.session_state["norm_result"]
-            show_ai_output("Respuesta normativa", answer)
+            show_ai_output("Respuesta normativa", answer, answer + "\n\n## Referencias recuperadas (no certificadas)\n" + "\n".join(f"[{i}] {name} — página PDF {page}" for i, (_, name, page, fragment) in enumerate(passages, 1)))
             cited = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
             if not cited or any(n < 1 or n > len(passages) for n in cited):
                 st.warning("Referencias ausentes o fuera del conjunto recuperado.")
@@ -505,5 +596,5 @@ with normativa:
                     st.text(fragment)
     st.info("Verifica las citas, la edición vigente y el documento oficial antes de aplicar requisitos en obra.")
 
-st.caption("INGENIA AI 4.3.1 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
+st.caption("INGENIA AI 4.4 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
 
