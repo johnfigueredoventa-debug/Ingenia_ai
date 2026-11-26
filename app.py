@@ -12,7 +12,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="INGENIA AI 4.5.4 PRO", page_icon="📐", layout="wide")
+st.set_page_config(page_title="INGENIA AI 4.5.5 PRO", page_icon="📐", layout="wide")
 
 # --------------------------- ESTILO -----------------------------------------
 st.markdown("""
@@ -153,7 +153,7 @@ def export_report(label, text, project, owner, fmt):
         sec.top_margin = sec.bottom_margin = Inches(.65)
         doc.styles['Normal'].font.name = 'Calibri'
         doc.styles['Normal'].font.size = Pt(10)
-        sec.header.paragraphs[0].text = 'INGENIA AI 4.5.4 PRO | Ingeniería Civil'
+        sec.header.paragraphs[0].text = 'INGENIA AI 4.5.5 PRO | Ingeniería Civil'
         doc.add_heading(label, 0)
         for m in meta: doc.add_paragraph(m)
         doc.add_paragraph(warning)
@@ -185,7 +185,7 @@ def export_report(label, text, project, owner, fmt):
         small = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10, splitLongWords=True)
         def p(s, style='Normal'):
             return Paragraph(html.escape(clean(s)), styles[style] if isinstance(style,str) else style)
-        story = [p('INGENIA AI 4.5.4 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
+        story = [p('INGENIA AI 4.5.5 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
         for kind,value in export_blocks(text):
             if kind == 'table':
                 width = landscape(A4)[0]-72
@@ -238,6 +238,20 @@ def read_norm(path, modified):
             pages.append((i, text))
     return pages
 
+def requested_pages(question):
+    pattern = r"p[aá]ginas?\s+(?:pdf\s+)?(\d+(?:\s*(?:,|y|e|a|[-–])\s*\d+)*)"
+    result = []
+    for group in re.findall(pattern, question, re.I):
+        for part in re.split(r"\s*(?:,|\by\b|\be\b)\s*", group):
+            nums = [int(n) for n in re.findall(r"\d+", part)]
+            if len(nums) == 2:
+                if not 0 <= nums[1]-nums[0] <= 10:
+                    raise ValueError("Selecciona un rango de hasta 11 páginas.")
+                result.extend(range(nums[0], nums[1]+1))
+            else:
+                result.extend(nums)
+    return list(dict.fromkeys(result))
+
 def find_passages(question, files):
     import math
     import unicodedata
@@ -253,8 +267,11 @@ def find_passages(question, files):
     lookup = {(n,p):t for n,p,t in pages}
     vocab = {(n,p):set(words(t)) for n,p,t in pages}
     freq = Counter(w for v in vocab.values() for w in v)
+    def index_page(t):
+        lines = [l for l in normalize(t).splitlines() if l.strip()]
+        return sum(bool(re.search(r"\.{3,}\s*\d*\s*$", l)) for l in lines) >= 3 or any(re.match(r"^\s*(indice|contenido|tabla de contenido)\s*$", l) for l in lines)
     def score(n,p):
-        return sum(math.log(1+(len(pages)+1)/(freq[w]+1)) for w in terms & vocab[n,p])
+        return (0.05 if index_page(lookup[n,p]) else 1.0) * sum(math.log(1+(len(pages)+1)/(freq[w]+1)) for w in terms & vocab[n,p])
     q = normalize(question)
     table_ids = re.findall(r"\btabla\s*(?:n\s*[.°ºo]*\s*\.?\s*)?(\d+)\b", q)
     article_ids = re.findall(r"\b(?:articulo|art\.?)\s*(\d+)\b", q)
@@ -262,6 +279,8 @@ def find_passages(question, files):
         table_ids = list(set(table_ids + ['1']))
     table_anchors, article_anchors = [], []
     for n,p,t in pages:
+        if index_page(t):
+            continue
         nt = normalize(t)
         if any(re.search(r"(?m)^\s*tabla\s*(?:n\s*[.°ºo]*\s*\.?\s*)?"+i+r"\b", nt) for i in table_ids):
             table_anchors.append((n,p))
@@ -269,7 +288,14 @@ def find_passages(question, files):
             article_anchors.append((n,p))
     ranked = sorted(lookup, key=lambda k: (-score(*k), k))
     candidates = []
-    explicit = [int(x) for x in re.findall(r"\bpagina\s+(?:pdf\s+)?(\d+)\b", q)]
+    explicit = requested_pages(question)
+    if explicit:
+        result = [(1, f.name, p, lookup[(f.name,p)]) for f in files for p in explicit if (f.name,p) in lookup]
+        if len(result) != len(files)*len(explicit):
+            raise ValueError("Una o más páginas solicitadas no tienen texto recuperable o no existen.")
+        if sum(len(t.encode('utf-8'))+len(n.encode('utf-8'))+100 for _,n,p,t in result) > 11000:
+            raise ValueError("Las páginas solicitadas exceden el contexto; consulta menos páginas.")
+        return result
     for f in files:
         for p in explicit:
             candidates.extend([(f.name,p),(f.name,p+1),(f.name,p-1)])
@@ -333,7 +359,7 @@ def exact_passages(num, files):
 
 # --------------------------- BARRA LATERAL ----------------------------------
 with st.sidebar:
-    st.markdown("## 📐 INGENIA AI 4.5.4 PRO")
+    st.markdown("## 📐 INGENIA AI 4.5.5 PRO")
     st.caption("INGENIERÍA · CONSTRUCCIÓN · CAD · BIM")
     st.info("Asistente técnico con IA")
     moneda = st.selectbox("Moneda", ["PEN (S/)", "USD ($)", "EUR (€)"])
@@ -355,7 +381,7 @@ with st.sidebar:
 
 # --------------------------- CABECERA ---------------------------------------
 st.markdown(
-    '<div class="hero"><h1>INGENIA AI 4.5.4 PRO</h1>'
+    '<div class="hero"><h1>INGENIA AI 4.5.5 PRO</h1>'
     '<p>Asistente inteligente para proyectos de Ingeniería Civil</p></div>',
     unsafe_allow_html=True,
 )
@@ -383,7 +409,7 @@ with inicio:
     a.metric("Módulos", "6")
     b.metric("Proyecto activo", proyecto[:18] or "Sin nombre")
     c.metric("Fecha", date.today().strftime("%d/%m/%Y"))
-    st.markdown("### Funciones de INGENIA AI 4.5.4 PRO")
+    st.markdown("### Funciones de INGENIA AI 4.5.5 PRO")
     st.write("- Consultar dudas técnicas con un asistente de IA.")
     st.write("- Preparar borradores de informes técnicos.")
     st.write("- Analizar observaciones de obra y datos de avance.")
@@ -597,27 +623,29 @@ with normativa:
                             if not requested <= available:
                                 raise ValueError("Selecciona los PDF de todas las normas mencionadas en la consulta.")
                             chosen = [f for f in chosen if norm_code(f.name) in requested]
-                        nums = list(dict.fromkeys(re.findall(r"\b\d+(?:\.\d+)+\b", question)))
+                        nums = list(dict.fromkeys(re.findall(r"\b\d+(?:\.\d+)+\b", re.sub(r"(?i)\bE[ ._-]?\d{3}\b", "", question))))
                         if len(nums) > 6:
                             raise ValueError("Consulta hasta seis numerales por vez.")
                         passages, sections = [], []
                         missing_nums = []
                         if len(chosen) > 1 and nums:
                             raise ValueError("Para consultar numerales exactos, selecciona una sola norma por consulta. Para comparar normas, usa una consulta temática sin numerales exactos.")
-                        for num in nums:
+                        explicit = requested_pages(question)
+                        for num in ([] if explicit else nums):
                             found = exact_passages(num, chosen)
                             if not found:
                                 missing_nums.append(num)
                             passages.extend(found)
                         # Tables and explicit pages require full-page evidence even when a numeral matches.
-                        if not passages or re.search(r"(?i)tabla|p[aá]gina", question) or missing_nums:
+                        topical = []
+                        if explicit or not passages or re.search(r"(?i)tabla|p[aá]gina", question) or missing_nums:
                             topical = find_passages(question, chosen)
                             merged = {(p[1], p[2]): p for p in passages}
                             merged.update({(p[1], p[2]): p for p in topical})
                             passages = list(merged.values())
                         # Full-page retrieval already has a bounded budget; avoid adding
                         # redundant exact sections for table queries.
-                        if re.search(r"(?i)tabla|p[aá]gina", question) and topical:
+                        if (explicit or re.search(r"(?i)tabla|p[aá]gina", question)) and topical:
                             passages = topical
                         passages = sorted(passages, key=lambda p: (p[1], p[2]))
                         if not passages:
@@ -668,5 +696,5 @@ with normativa:
                     st.text(fragment)
     st.info("Verifica las citas, la edición vigente y el documento oficial antes de aplicar requisitos en obra.")
 
-st.caption("INGENIA AI 4.5.4 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
+st.caption("INGENIA AI 4.5.5 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
 
