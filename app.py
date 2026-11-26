@@ -12,7 +12,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="INGENIA AI 4.5.5 PRO", page_icon="📐", layout="wide")
+st.set_page_config(page_title="INGENIA AI 5.0 PRO", page_icon="📐", layout="wide")
 
 # --------------------------- ESTILO -----------------------------------------
 st.markdown("""
@@ -153,7 +153,7 @@ def export_report(label, text, project, owner, fmt):
         sec.top_margin = sec.bottom_margin = Inches(.65)
         doc.styles['Normal'].font.name = 'Calibri'
         doc.styles['Normal'].font.size = Pt(10)
-        sec.header.paragraphs[0].text = 'INGENIA AI 4.5.5 PRO | Ingeniería Civil'
+        sec.header.paragraphs[0].text = 'INGENIA AI 5.0 PRO | Ingeniería Civil'
         doc.add_heading(label, 0)
         for m in meta: doc.add_paragraph(m)
         doc.add_paragraph(warning)
@@ -185,7 +185,7 @@ def export_report(label, text, project, owner, fmt):
         small = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10, splitLongWords=True)
         def p(s, style='Normal'):
             return Paragraph(html.escape(clean(s)), styles[style] if isinstance(style,str) else style)
-        story = [p('INGENIA AI 4.5.5 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
+        story = [p('INGENIA AI 5.0 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
         for kind,value in export_blocks(text):
             if kind == 'table':
                 width = landscape(A4)[0]-72
@@ -359,7 +359,7 @@ def exact_passages(num, files):
 
 # --------------------------- BARRA LATERAL ----------------------------------
 with st.sidebar:
-    st.markdown("## 📐 INGENIA AI 4.5.5 PRO")
+    st.markdown("## 📐 INGENIA AI 5.0 PRO")
     st.caption("INGENIERÍA · CONSTRUCCIÓN · CAD · BIM")
     st.info("Asistente técnico con IA")
     moneda = st.selectbox("Moneda", ["PEN (S/)", "USD ($)", "EUR (€)"])
@@ -381,7 +381,7 @@ with st.sidebar:
 
 # --------------------------- CABECERA ---------------------------------------
 st.markdown(
-    '<div class="hero"><h1>INGENIA AI 4.5.5 PRO</h1>'
+    '<div class="hero"><h1>INGENIA AI 5.0 PRO</h1>'
     '<p>Asistente inteligente para proyectos de Ingeniería Civil</p></div>',
     unsafe_allow_html=True,
 )
@@ -399,17 +399,17 @@ if not api_key:
     )
 
 # --------------------------- PESTAÑAS ---------------------------------------
-inicio, obra, informe, cad, bim, asistente, normativa = st.tabs([
-    "🏠 Inicio", "🏗️ Gestión de obra", "📄 Informes", "📐 AutoCAD", "🏢 BIM / Revit", "🤖 Asistente IA", "📚 Normativa RNE"
+inicio, obra, informe, cad, bim, asistente, normativa, costos = st.tabs([
+    "🏠 Inicio", "🏗️ Gestión de obra", "📄 Informes", "📐 AutoCAD", "🏢 BIM / Revit", "🤖 Asistente IA", "📚 Normativa RNE", "💰 Metrados y costos"
 ])
 
 with inicio:
     st.subheader("Panel de trabajo")
     a, b, c = st.columns(3)
-    a.metric("Módulos", "6")
+    a.metric("Módulos", "7")
     b.metric("Proyecto activo", proyecto[:18] or "Sin nombre")
     c.metric("Fecha", date.today().strftime("%d/%m/%Y"))
-    st.markdown("### Funciones de INGENIA AI 4.5.5 PRO")
+    st.markdown("### Funciones de INGENIA AI 5.0 PRO")
     st.write("- Consultar dudas técnicas con un asistente de IA.")
     st.write("- Preparar borradores de informes técnicos.")
     st.write("- Analizar observaciones de obra y datos de avance.")
@@ -678,7 +678,9 @@ with normativa:
                     st.error("No se pudo completar la consulta: " + str(exc))
         if st.session_state.get("norm_result"):
             answer, passages = st.session_state["norm_result"]
-            show_ai_output("Respuesta normativa", answer, answer + "\n\n## Referencias recuperadas (no certificadas)\n" + "\n".join(f"[{i}] {name} — página PDF {page}" for i, (_, name, page, fragment) in enumerate(passages, 1)))
+            show_ai_output("Respuesta normativa", answer, answer + "\n\n## Fuentes normativas y referencias técnicas\n" + "\n".join(f"[{i}] RNE — E.{norm_code(name) or 'sin código identificado'} {catalog.get(norm_code(name), '')} — archivo: {name} — página PDF {page} — extracción: {'OCR' if '[Texto OCR:' in fragment else 'texto digital'}" for i, (_, name, page, fragment) in enumerate(passages, 1)) + "\n\nProcedencia y vigencia: verificar contra la publicación oficial. La interpretación y transcripción requieren revisión profesional.")
+            st.markdown("### Fuentes normativas y referencias técnicas")
+            st.caption("Biblioteca RNE local. Procedencia y vigencia pendientes de contraste oficial.")
             cited = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
             if not cited or any(n < 1 or n > len(passages) for n in cited):
                 st.warning("Referencias ausentes o fuera del conjunto recuperado.")
@@ -696,5 +698,50 @@ with normativa:
                     st.text(fragment)
     st.info("Verifica las citas, la edición vigente y el documento oficial antes de aplicar requisitos en obra.")
 
-st.caption("INGENIA AI 4.5.5 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
+
+# --------------------------- METRADOS Y COSTOS ---------------------------
+def calcular_costos(metrado, recursos, gg, utilidad, igv):
+    pu = sum(cantidad * precio for cantidad, precio in recursos)
+    directo = metrado * pu
+    subtotal = directo * (1 + (gg + utilidad) / 100)
+    return pu, directo, subtotal, subtotal * igv / 100, subtotal * (1 + igv / 100)
+
+with costos:
+    st.subheader("Metrados, APU y presupuesto")
+    st.caption("Cálculo determinista por partida. Precios ingresados por el usuario, sin cotización automática. Moneda: " + moneda)
+    partida = st.text_input("Partida", "Concreto", key="cost_partida")
+    unidad = st.selectbox("Unidad de partida", ["m³", "m²", "m", "und", "kg"], key="cost_unidad")
+    modo = st.radio("Origen del metrado", ["Manual", "Geometría simple"], key="cost_modo")
+    if modo == "Geometría simple" and unidad in ("m³", "m²", "m"):
+        n = st.number_input("Número de elementos", min_value=1, value=1, key="cost_n")
+        largo = st.number_input("Longitud (m)", min_value=0.0, value=1.0, key="cost_l")
+        ancho = st.number_input("Ancho (m)", min_value=0.0, value=1.0, key="cost_a") if unidad != "m" else 1.0
+        alto = st.number_input("Altura o espesor (m)", min_value=0.0, value=1.0, key="cost_h") if unidad == "m³" else 1.0
+        metrado = n*largo*ancho*alto
+    else:
+        metrado = st.number_input("Cantidad de partida", min_value=0.0, value=1.0, key="cost_m")
+    st.metric("Metrado", f"{metrado:,.3f} {unidad}")
+    st.markdown("#### Análisis de precios unitarios")
+    st.caption("Cantidad de recurso por unidad de partida; precio por unidad de recurso. No incluye IGV.")
+    import pandas as pd
+    base = pd.DataFrame([{"Tipo": t, "Recurso": "", "Unidad": "", "Cantidad": 0.0, "Precio": 0.0} for t in ["Material", "Mano de obra", "Equipo", "Herramienta"]])
+    recursos = st.data_editor(base, num_rows="dynamic", key="cost_recursos", hide_index=True, column_config={"Cantidad": st.column_config.NumberColumn(min_value=0.0, required=True), "Precio": st.column_config.NumberColumn(min_value=0.0, required=True), "Tipo": st.column_config.SelectboxColumn(options=["Material", "Mano de obra", "Equipo", "Herramienta"])})
+    gg = st.number_input("Gastos generales (% del costo directo)", 0.0, 100.0, 10.0, key="cost_gg")
+    util = st.number_input("Utilidad (% del costo directo)", 0.0, 100.0, 5.0, key="cost_util")
+    igv = st.number_input("Impuesto aplicable (%)", 0.0, 100.0, 18.0, key="cost_igv")
+    import math
+    valid = all(pd.notna(v) and math.isfinite(float(v)) and float(v)>=0 for col in ["Cantidad", "Precio"] for v in recursos[col])
+    if not valid:
+        st.error("Completa cantidades y precios válidos, no negativos.")
+    else:
+        pu, directo, subtotal, impuesto, total = calcular_costos(metrado, zip(recursos.Cantidad, recursos.Precio), gg, util, igv)
+        st.metric("Precio unitario", f"{pu:,.2f}")
+        st.metric("Costo directo", f"{directo:,.2f}")
+        st.metric("Total con impuesto", f"{total:,.2f}")
+        st.caption("Gastos generales y utilidad calculados sobre costo directo; impuesto sobre subtotal. Verifica tasas y régimen aplicables.")
+        resumen = pd.DataFrame([{"Proyecto": proyecto, "Partida": partida, "Unidad": unidad, "Moneda": moneda, "Metrado": metrado, "PU": pu, "Directo": directo, "GG": directo*gg/100, "Utilidad": directo*util/100, "Subtotal": subtotal, "Impuesto": impuesto, "Total": total}])
+        st.download_button("Descargar presupuesto CSV (Excel)", resumen.to_csv(index=False).encode("utf-8-sig"), "presupuesto.csv", "text/csv")
+        st.download_button("Descargar recursos APU CSV", recursos.assign(Parcial=recursos.Cantidad*recursos.Precio).to_csv(index=False).encode("utf-8-sig"), "apu.csv", "text/csv")
+
+st.caption("INGENIA AI 5.0 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
 
