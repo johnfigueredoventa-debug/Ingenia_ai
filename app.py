@@ -12,7 +12,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="INGENIA AI 4.5.2 PRO", page_icon="📐", layout="wide")
+st.set_page_config(page_title="INGENIA AI 4.5.3 PRO", page_icon="📐", layout="wide")
 
 # --------------------------- ESTILO -----------------------------------------
 st.markdown("""
@@ -153,7 +153,7 @@ def export_report(label, text, project, owner, fmt):
         sec.top_margin = sec.bottom_margin = Inches(.65)
         doc.styles['Normal'].font.name = 'Calibri'
         doc.styles['Normal'].font.size = Pt(10)
-        sec.header.paragraphs[0].text = 'INGENIA AI 4.5.2 PRO | Ingeniería Civil'
+        sec.header.paragraphs[0].text = 'INGENIA AI 4.5.3 PRO | Ingeniería Civil'
         doc.add_heading(label, 0)
         for m in meta: doc.add_paragraph(m)
         doc.add_paragraph(warning)
@@ -185,7 +185,7 @@ def export_report(label, text, project, owner, fmt):
         small = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10, splitLongWords=True)
         def p(s, style='Normal'):
             return Paragraph(html.escape(clean(s)), styles[style] if isinstance(style,str) else style)
-        story = [p('INGENIA AI 4.5.2 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
+        story = [p('INGENIA AI 4.5.3 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
         for kind,value in export_blocks(text):
             if kind == 'table':
                 width = landscape(A4)[0]-72
@@ -243,24 +243,33 @@ def find_passages(question, files):
     def score(n,p):
         return sum(math.log(1+(len(pages)+1)/(freq[w]+1)) for w in terms & vocab[n,p])
     q = normalize(question)
-    table_ids = re.findall(r"\btabla\s*(?:n\s*[.°ºo]*\s*)?(\d+)\b", q)
+    table_ids = re.findall(r"\btabla\s*(?:n\s*[.°ºo]*\s*\.?\s*)?(\d+)\b", q)
     article_ids = re.findall(r"\b(?:articulo|art\.?)\s*(\d+)\b", q)
     if 'carga' in q and 'viva' in q and any(re.search(r"(?i)E[ ._-]?020", f.name) for f in files):
         table_ids = list(set(table_ids + ['1']))
-    anchors = []
+    table_anchors, article_anchors = [], []
     for n,p,t in pages:
         nt = normalize(t)
-        if any(re.search(r"(?m)^\s*tabla\s*(?:n\s*[.°ºo]*\s*)?"+i+r"\b", nt) for i in table_ids):
-            anchors.append((n,p))
+        if any(re.search(r"(?m)^\s*tabla\s*(?:n\s*[.°ºo]*\s*\.?\s*)?"+i+r"\b", nt) for i in table_ids):
+            table_anchors.append((n,p))
         elif any(re.search(r"(?m)^\s*articulo\s*"+i+r"\b", nt) for i in article_ids):
-            anchors.append((n,p))
+            article_anchors.append((n,p))
     ranked = sorted(lookup, key=lambda k: (-score(*k), k))
     candidates = []
     explicit = [int(x) for x in re.findall(r"\bpagina\s+(?:pdf\s+)?(\d+)\b", q)]
     for f in files:
         for p in explicit:
             candidates.extend([(f.name,p),(f.name,p+1),(f.name,p-1)])
-    for n,p in anchors:
+    # Prioritize actual table headings, not article mentions or the index.
+    def table_score(k):
+        t = lookup[k]
+        numeric_rows = sum(bool(re.search(r"\d[,.]\d|\d\s{2,}\d", line)) for line in t.splitlines())
+        return score(*k) + min(numeric_rows, 12)
+    table_anchors.sort(key=lambda k: (-table_score(k), k))
+    candidates.extend(table_anchors)
+    for n,p in table_anchors:
+        candidates.extend([(n,p+1),(n,p-1)])
+    for n,p in article_anchors:
         candidates.extend([(n,p),(n,p+1),(n,p-1),(n,p+2)])
     # Give each requested term a chance to retrieve its own page.
     for w in sorted(terms, key=lambda w: (freq[w] or 99999,w)):
@@ -278,7 +287,11 @@ def find_passages(question, files):
         # Budget UTF-8 bytes, including reference overhead.
         cost = len(content.encode('utf-8')) + len(n.encode('utf-8')) + 100
         if cost > budget:
-            continue
+            if not results and budget > 500:
+                content = content.encode('utf-8')[:budget-len(n.encode('utf-8'))-100].decode('utf-8', errors='ignore')
+                cost = len(content.encode('utf-8')) + len(n.encode('utf-8')) + 100
+            else:
+                continue
         seen.add((n,p))
         results.append((score(n,p),n,p,content))
         budget -= cost
@@ -307,7 +320,7 @@ def exact_passages(num, files):
 
 # --------------------------- BARRA LATERAL ----------------------------------
 with st.sidebar:
-    st.markdown("## 📐 INGENIA AI 4.5.2 PRO")
+    st.markdown("## 📐 INGENIA AI 4.5.3 PRO")
     st.caption("INGENIERÍA · CONSTRUCCIÓN · CAD · BIM")
     st.info("Asistente técnico con IA")
     moneda = st.selectbox("Moneda", ["PEN (S/)", "USD ($)", "EUR (€)"])
@@ -329,7 +342,7 @@ with st.sidebar:
 
 # --------------------------- CABECERA ---------------------------------------
 st.markdown(
-    '<div class="hero"><h1>INGENIA AI 4.5.2 PRO</h1>'
+    '<div class="hero"><h1>INGENIA AI 4.5.3 PRO</h1>'
     '<p>Asistente inteligente para proyectos de Ingeniería Civil</p></div>',
     unsafe_allow_html=True,
 )
@@ -357,7 +370,7 @@ with inicio:
     a.metric("Módulos", "6")
     b.metric("Proyecto activo", proyecto[:18] or "Sin nombre")
     c.metric("Fecha", date.today().strftime("%d/%m/%Y"))
-    st.markdown("### Funciones de INGENIA AI 4.5.2 PRO")
+    st.markdown("### Funciones de INGENIA AI 4.5.3 PRO")
     st.write("- Consultar dudas técnicas con un asistente de IA.")
     st.write("- Preparar borradores de informes técnicos.")
     st.write("- Analizar observaciones de obra y datos de avance.")
@@ -589,6 +602,10 @@ with normativa:
                             merged = {(p[1], p[2]): p for p in passages}
                             merged.update({(p[1], p[2]): p for p in topical})
                             passages = list(merged.values())
+                        # Full-page retrieval already has a bounded budget; avoid adding
+                        # redundant exact sections for table queries.
+                        if re.search(r"(?i)tabla|p[aá]gina", question) and topical:
+                            passages = topical
                         passages = sorted(passages, key=lambda p: (p[1], p[2]))
                         if not passages:
                             raise ValueError("No se localizaron fragmentos. Revisa el numeral y documento.")
@@ -597,7 +614,7 @@ with normativa:
                                   "Genera UNA respuesta consolidada; si se solicita comparar, usa UNA sola tabla. "
                                   "Distingue documento, norma, numerales, condiciones, elementos y tipos de refuerzo. No mezcles requisitos de normas distintas. Conserva el encabezado de cada grupo de filas cuando continúa en otra página. "
                                   "No conviertas diámetros discretos en rangos. Conserva fórmulas como db y sus límites. "
-                                  "Incluye todas las filas y subcategorías solicitadas, notas y excepciones expresas. No inventes ni repitas filas. No uses separadores decorativos ni tablas vacías. "
+                                  "Incluye todas las filas y subcategorías solicitadas, notas y excepciones expresas. No inventes ni repitas filas. No uses separadores decorativos ni tablas vacías. Distingue página PDF (identificador de evidencia) de página impresa. Si no hay valores, responde en texto sin tabla. "
                                   "Cita cada fila y afirmación con [n]. Declara datos faltantes sin inferirlos. No confundas una mención a una tabla con su contenido. Si faltan filas, indica que no fueron recuperadas, no que no existen en la norma. "
                                   "Termina con una línea exacta FIN_RESPUESTA.\nConsulta: " + question +
                                   "\nNumerales no localizados: " + (", ".join(missing_nums) or "ninguno") + "\nEvidencia:\n" + evidence)
@@ -638,5 +655,5 @@ with normativa:
                     st.text(fragment)
     st.info("Verifica las citas, la edición vigente y el documento oficial antes de aplicar requisitos en obra.")
 
-st.caption("INGENIA AI 4.5.2 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
+st.caption("INGENIA AI 4.5.3 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
 
