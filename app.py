@@ -12,7 +12,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="INGENIA AI 5.0 PRO", page_icon="📐", layout="wide")
+st.set_page_config(page_title="INGENIA AI 5.0.1 PRO", page_icon="📐", layout="wide")
 
 # --------------------------- ESTILO -----------------------------------------
 st.markdown("""
@@ -153,7 +153,7 @@ def export_report(label, text, project, owner, fmt):
         sec.top_margin = sec.bottom_margin = Inches(.65)
         doc.styles['Normal'].font.name = 'Calibri'
         doc.styles['Normal'].font.size = Pt(10)
-        sec.header.paragraphs[0].text = 'INGENIA AI 5.0 PRO | Ingeniería Civil'
+        sec.header.paragraphs[0].text = 'INGENIA AI 5.0.1 PRO | Ingeniería Civil'
         doc.add_heading(label, 0)
         for m in meta: doc.add_paragraph(m)
         doc.add_paragraph(warning)
@@ -185,7 +185,7 @@ def export_report(label, text, project, owner, fmt):
         small = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10, splitLongWords=True)
         def p(s, style='Normal'):
             return Paragraph(html.escape(clean(s)), styles[style] if isinstance(style,str) else style)
-        story = [p('INGENIA AI 5.0 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
+        story = [p('INGENIA AI 5.0.1 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
         for kind,value in export_blocks(text):
             if kind == 'table':
                 width = landscape(A4)[0]-72
@@ -359,7 +359,7 @@ def exact_passages(num, files):
 
 # --------------------------- BARRA LATERAL ----------------------------------
 with st.sidebar:
-    st.markdown("## 📐 INGENIA AI 5.0 PRO")
+    st.markdown("## 📐 INGENIA AI 5.0.1 PRO")
     st.caption("INGENIERÍA · CONSTRUCCIÓN · CAD · BIM")
     st.info("Asistente técnico con IA")
     moneda = st.selectbox("Moneda", ["PEN (S/)", "USD ($)", "EUR (€)"])
@@ -381,7 +381,7 @@ with st.sidebar:
 
 # --------------------------- CABECERA ---------------------------------------
 st.markdown(
-    '<div class="hero"><h1>INGENIA AI 5.0 PRO</h1>'
+    '<div class="hero"><h1>INGENIA AI 5.0.1 PRO</h1>'
     '<p>Asistente inteligente para proyectos de Ingeniería Civil</p></div>',
     unsafe_allow_html=True,
 )
@@ -409,7 +409,7 @@ with inicio:
     a.metric("Módulos", "7")
     b.metric("Proyecto activo", proyecto[:18] or "Sin nombre")
     c.metric("Fecha", date.today().strftime("%d/%m/%Y"))
-    st.markdown("### Funciones de INGENIA AI 5.0 PRO")
+    st.markdown("### Funciones de INGENIA AI 5.0.1 PRO")
     st.write("- Consultar dudas técnicas con un asistente de IA.")
     st.write("- Preparar borradores de informes técnicos.")
     st.write("- Analizar observaciones de obra y datos de avance.")
@@ -706,17 +706,77 @@ def calcular_costos(metrado, recursos, gg, utilidad, igv):
     subtotal = directo * (1 + (gg + utilidad) / 100)
     return pu, directo, subtotal, subtotal * igv / 100, subtotal * (1 + igv / 100)
 
+def excel_costos(items, proyecto, responsable, moneda, gg, util, igv):
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    wb = Workbook(); wb.remove(wb.active)
+    def sheet(name, headers, widths):
+        ws = wb.create_sheet(name)
+        ws.append(["INGENIA AI 5.0.1 PRO | " + name]); ws.merge_cells(start_row=1,start_column=1,end_row=1,end_column=len(headers))
+        ws.append([proyecto]); ws.merge_cells(start_row=2,start_column=1,end_row=2,end_column=len(headers))
+        ws.append(headers)
+        for i,w in enumerate(widths,1): ws.column_dimensions[get_column_letter(i)].width=w
+        ws.freeze_panes="A4"; ws.sheet_view.showGridLines=False
+        ws.sheet_properties.pageSetUpPr.fitToPage=True
+        ws.page_setup.orientation="landscape"; ws.page_setup.paperSize=ws.PAPERSIZE_A4; ws.page_setup.fitToWidth=1; ws.page_setup.fitToHeight=0
+        ws.print_title_rows="1:3"
+        return ws
+    def literal(ws,row):
+        ws.append(row)
+        for c in ws[ws.max_row]:
+            if isinstance(c.value,str): c.data_type="s"
+    d=sheet("Datos generales",["Campo","Valor"],[30,65])
+    for row in [["Proyecto",proyecto],["Responsable",responsable],["Fecha",date.today().isoformat()],["Moneda",moneda],["Gastos generales",gg/100],["Utilidad",util/100],["Impuesto",igv/100]]: literal(d,row)
+    for r in (8,9,10): d.cell(r,2).number_format="0.00%"
+    m=sheet("Metrados",["Código","Partida","Unidad","Origen","Elementos","Largo","Ancho","Alto","Metrado"],[14,38,12,22,14,14,14,14,16])
+    a=sheet("APU",["Código","Tipo","Recurso","Unidad","Cantidad unitaria","Precio","Parcial"],[14,20,38,12,20,16,16])
+    p=sheet("Presupuesto",["Código","Partida","Unidad","Metrado","Precio unitario","Parcial"],[14,38,12,16,20,20])
+    ins=sheet("Insumos",["Tipo","Recurso","Unidad","Precio","Cantidad total","Costo total"],[20,38,12,16,20,20])
+    groups={}
+    for j,item in enumerate(items,4):
+        literal(m,[item['codigo'],item['partida'],item['unidad'],item['modo'],*item['dims'],item['metrado']])
+        if item['modo']=="Geometría simple": m.cell(j,9,f"=PRODUCT(E{j}:H{j})")
+        start=a.max_row+1
+        for res in item['recursos']:
+            literal(a,[item['codigo'],res['Tipo'],res['Recurso'],res['Unidad'],res['Cantidad'],res['Precio']]); r=a.max_row; a.cell(r,7,f"=E{r}*F{r}")
+            groups.setdefault((res['Tipo'],res['Recurso'],res['Unidad'],res['Precio']),[]).append((r,j))
+        end=a.max_row
+        literal(p,[item['codigo'],item['partida'],item['unidad']]); p.cell(j,4,f"=Metrados!I{j}"); p.cell(j,5,f"=SUM(APU!G{start}:G{end})" if end>=start else "=0"); p.cell(j,6,f"=D{j}*E{j}")
+    for key,refs in groups.items():
+        literal(ins,list(key)); r=ins.max_row; ins.cell(r,5,"="+"+".join(f"APU!E{x}*Metrados!I{y}" for x,y in refs)); ins.cell(r,6,f"=D{r}*E{r}")
+    r=sheet("Resumen",["Concepto","Importe"],[38,24])
+    for label,formula in [("Costo directo",f"=SUM(Presupuesto!F4:F{p.max_row})"),("Gastos generales","=B4*'Datos generales'!B8"),("Utilidad","=B4*'Datos generales'!B9"),("Subtotal","=SUM(B4:B6)"),("Impuesto","=B7*'Datos generales'!B10"),("TOTAL","=SUM(B7:B8)")]: r.append([label,formula])
+    f=sheet("Fuentes",["Concepto","Procedencia"],[30,85]); literal(f,["Precios y rendimientos","Ingresados por el usuario; no son cotizaciones verificadas."]); literal(f,["Metrados","Entrada manual o geometría simple; revisar planos."])
+    for ws in wb:
+        for row in ws.iter_rows():
+            for c in row:
+                c.alignment=Alignment(vertical="center",wrap_text=True)
+                if c.row in (1,3): c.fill=PatternFill("solid",fgColor="153C59"); c.font=Font(color="FFFFFF",bold=True,size=11)
+                elif c.row>=4:
+                    c.fill=PatternFill("solid",fgColor="EAF2F8" if c.row%2==0 else "FFFFFF")
+                    c.font=Font(color="172B40" if c.data_type=="f" else "245A91",size=11)
+                    if c.data_type in ("n","f") and c.value is not None and c.number_format=="General": c.number_format="#,##0.00#"
+        ws.row_dimensions[1].height=30; ws.row_dimensions[3].height=30
+        ws.print_options.horizontalCentered=True
+    r["A9"].font=Font(bold=True); r["B9"].font=Font(bold=True)
+    out=BytesIO(); wb.save(out); return out.getvalue()
+
 with costos:
     st.subheader("Metrados, APU y presupuesto")
     st.caption("Cálculo determinista por partida. Precios ingresados por el usuario, sin cotización automática. Moneda: " + moneda)
+    codigo = st.text_input("Código de partida", "01.01", key="cost_codigo")
     partida = st.text_input("Partida", "Concreto", key="cost_partida")
     unidad = st.selectbox("Unidad de partida", ["m³", "m²", "m", "und", "kg"], key="cost_unidad")
     modo = st.radio("Origen del metrado", ["Manual", "Geometría simple"], key="cost_modo")
+    dims = [None]*4
     if modo == "Geometría simple" and unidad in ("m³", "m²", "m"):
         n = st.number_input("Número de elementos", min_value=1, value=1, key="cost_n")
         largo = st.number_input("Longitud (m)", min_value=0.0, value=1.0, key="cost_l")
         ancho = st.number_input("Ancho (m)", min_value=0.0, value=1.0, key="cost_a") if unidad != "m" else 1.0
         alto = st.number_input("Altura o espesor (m)", min_value=0.0, value=1.0, key="cost_h") if unidad == "m³" else 1.0
+        dims = [n,largo,ancho,alto]
         metrado = n*largo*ancho*alto
     else:
         metrado = st.number_input("Cantidad de partida", min_value=0.0, value=1.0, key="cost_m")
@@ -739,9 +799,36 @@ with costos:
         st.metric("Costo directo", f"{directo:,.2f}")
         st.metric("Total con impuesto", f"{total:,.2f}")
         st.caption("Gastos generales y utilidad calculados sobre costo directo; impuesto sobre subtotal. Verifica tasas y régimen aplicables.")
-        resumen = pd.DataFrame([{"Proyecto": proyecto, "Partida": partida, "Unidad": unidad, "Moneda": moneda, "Metrado": metrado, "PU": pu, "Directo": directo, "GG": directo*gg/100, "Utilidad": directo*util/100, "Subtotal": subtotal, "Impuesto": impuesto, "Total": total}])
-        st.download_button("Descargar presupuesto CSV (Excel)", resumen.to_csv(index=False).encode("utf-8-sig"), "presupuesto.csv", "text/csv")
-        st.download_button("Descargar recursos APU CSV", recursos.assign(Parcial=recursos.Cantidad*recursos.Precio).to_csv(index=False).encode("utf-8-sig"), "apu.csv", "text/csv")
+        items = st.session_state.setdefault("presupuesto501", {})
+        if st.button("Guardar / actualizar partida", type="primary"):
+            rows = recursos.fillna("").to_dict("records")
+            rows = [r for r in rows if r["Recurso"] or r["Cantidad"] or r["Precio"]]
+            if not codigo.strip() or not partida.strip() or not rows or any(not str(r["Recurso"]).strip() or not str(r["Unidad"]).strip() for r in rows):
+                st.error("Completa código, partida, recurso y unidad de cada fila utilizada.")
+            elif items and any(i["moneda"] != moneda for i in items.values()):
+                st.error("No mezcles monedas en un presupuesto. Elimina las partidas anteriores o selecciona su moneda.")
+            else:
+                items[codigo.strip()] = dict(codigo=codigo.strip(), partida=partida, unidad=unidad, modo=modo if dims[0] is not None else "Manual", dims=dims, metrado=metrado, recursos=rows, moneda=moneda)
+                st.success("Partida guardada. Usa otro código para añadir una nueva.")
+    items = st.session_state.setdefault("presupuesto501", {})
+    st.markdown("### Presupuesto consolidado")
+    st.caption("Las partidas se guardan durante esta sesión. Descarga el Excel antes de cerrar o recargar la página.")
+    if items:
+        saved=list(items.values())
+        data=[]
+        for item in saved:
+            pu=sum(r["Cantidad"]*r["Precio"] for r in item["recursos"])
+            data.append({"Código":item["codigo"],"Partida":item["partida"],"Unidad":item["unidad"],"Metrado":item["metrado"],"PU":pu,"Parcial":pu*item["metrado"]})
+        st.dataframe(data, hide_index=True, use_container_width=True)
+        cd=sum(r["Parcial"] for r in data)
+        st.metric("Total consolidado", f"{cd*(1+(gg+util)/100)*(1+igv/100):,.2f} {saved[0]['moneda']}")
+        remove=st.selectbox("Partida para eliminar", list(items), key="cost_remove")
+        if st.button("Eliminar partida"):
+            del items[remove]; st.rerun()
+        try:
+            xlsx=excel_costos(saved, proyecto, responsable, saved[0]["moneda"], gg, util, igv)
+            st.download_button("Descargar presupuesto Excel (.xlsx)", xlsx, "INGENIA_presupuesto.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        except Exception as exc:
+            st.error(f"No se pudo generar Excel: {exc}")
 
-st.caption("INGENIA AI 5.0 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
-
+st.caption("INGENIA AI 5.0.1 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
