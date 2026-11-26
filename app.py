@@ -12,7 +12,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="INGENIA AI 4.5.1 PRO", page_icon="📐", layout="wide")
+st.set_page_config(page_title="INGENIA AI 4.5.2 PRO", page_icon="📐", layout="wide")
 
 # --------------------------- ESTILO -----------------------------------------
 st.markdown("""
@@ -105,9 +105,16 @@ def call_ai(api_key, prompt, history=None, output_limit=4000):
     raise RuntimeError("No se pudo generar una respuesta. " + ("; ".join(failures) or "Configura una clave API.") + ". Intenta más tarde.")
 
 
+def clean_response(text):
+    # Remove decorative rules and shorten excessive Markdown separators only.
+    text = re.sub(r"(?m)^\s*[-_=*]{12,}\s*$", "", text)
+    text = re.sub(r"(?m)^(?=\s*\|)([| :\-]+)$", lambda m: re.sub(r"-{4,}", "---", m.group(0)), text)
+    return text
+
+
 def export_blocks(text):
     """Convert common Markdown headings, lists and pipe tables without changing values."""
-    lines = text.splitlines()
+    lines = clean_response(text).splitlines()
     i = 0
     while i < len(lines):
         line = lines[i].strip()
@@ -146,7 +153,7 @@ def export_report(label, text, project, owner, fmt):
         sec.top_margin = sec.bottom_margin = Inches(.65)
         doc.styles['Normal'].font.name = 'Calibri'
         doc.styles['Normal'].font.size = Pt(10)
-        sec.header.paragraphs[0].text = 'INGENIA AI 4.5.1 PRO | Ingeniería Civil'
+        sec.header.paragraphs[0].text = 'INGENIA AI 4.5.2 PRO | Ingeniería Civil'
         doc.add_heading(label, 0)
         for m in meta: doc.add_paragraph(m)
         doc.add_paragraph(warning)
@@ -178,7 +185,7 @@ def export_report(label, text, project, owner, fmt):
         small = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10, splitLongWords=True)
         def p(s, style='Normal'):
             return Paragraph(html.escape(clean(s)), styles[style] if isinstance(style,str) else style)
-        story = [p('INGENIA AI 4.5.1 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
+        story = [p('INGENIA AI 4.5.2 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
         for kind,value in export_blocks(text):
             if kind == 'table':
                 width = landscape(A4)[0]-72
@@ -236,21 +243,25 @@ def find_passages(question, files):
     def score(n,p):
         return sum(math.log(1+(len(pages)+1)/(freq[w]+1)) for w in terms & vocab[n,p])
     q = normalize(question)
-    table_ids = re.findall(r"\btabla\s+(\d+)\b", q)
+    table_ids = re.findall(r"\btabla\s*(?:n\s*[.°ºo]*\s*)?(\d+)\b", q)
     article_ids = re.findall(r"\b(?:articulo|art\.?)\s*(\d+)\b", q)
     if 'carga' in q and 'viva' in q and any(re.search(r"(?i)E[ ._-]?020", f.name) for f in files):
         table_ids = list(set(table_ids + ['1']))
     anchors = []
     for n,p,t in pages:
         nt = normalize(t)
-        if any(re.search(r"(?m)^\s*tabla\s*"+i+r"\b", nt) for i in table_ids):
+        if any(re.search(r"(?m)^\s*tabla\s*(?:n\s*[.°ºo]*\s*)?"+i+r"\b", nt) for i in table_ids):
             anchors.append((n,p))
         elif any(re.search(r"(?m)^\s*articulo\s*"+i+r"\b", nt) for i in article_ids):
             anchors.append((n,p))
     ranked = sorted(lookup, key=lambda k: (-score(*k), k))
     candidates = []
+    explicit = [int(x) for x in re.findall(r"\bpagina\s+(?:pdf\s+)?(\d+)\b", q)]
+    for f in files:
+        for p in explicit:
+            candidates.extend([(f.name,p),(f.name,p+1),(f.name,p-1)])
     for n,p in anchors:
-        candidates.extend([(n,p),(n,p+1),(n,p+2)])
+        candidates.extend([(n,p),(n,p+1),(n,p-1),(n,p+2)])
     # Give each requested term a chance to retrieve its own page.
     for w in sorted(terms, key=lambda w: (freq[w] or 99999,w)):
         hits = [k for k in ranked if w in vocab[k]]
@@ -275,7 +286,7 @@ def find_passages(question, files):
 
 def exact_passages(num, files):
     """Extract a section through the next non-descendant heading, preserving pages."""
-    heading = re.compile(r"(?m)^\s*(\d+(?:\.\d+)+)\s+(?=\S)")
+    heading = re.compile(r"(?m)^\s*(\d+(?:\.\d+)+)\.?[ \t]+(?=\S)")
     results = []
     for f in files:
         active = False
@@ -296,7 +307,7 @@ def exact_passages(num, files):
 
 # --------------------------- BARRA LATERAL ----------------------------------
 with st.sidebar:
-    st.markdown("## 📐 INGENIA AI 4.5.1 PRO")
+    st.markdown("## 📐 INGENIA AI 4.5.2 PRO")
     st.caption("INGENIERÍA · CONSTRUCCIÓN · CAD · BIM")
     st.info("Asistente técnico con IA")
     moneda = st.selectbox("Moneda", ["PEN (S/)", "USD ($)", "EUR (€)"])
@@ -318,7 +329,7 @@ with st.sidebar:
 
 # --------------------------- CABECERA ---------------------------------------
 st.markdown(
-    '<div class="hero"><h1>INGENIA AI 4.5.1 PRO</h1>'
+    '<div class="hero"><h1>INGENIA AI 4.5.2 PRO</h1>'
     '<p>Asistente inteligente para proyectos de Ingeniería Civil</p></div>',
     unsafe_allow_html=True,
 )
@@ -346,7 +357,7 @@ with inicio:
     a.metric("Módulos", "6")
     b.metric("Proyecto activo", proyecto[:18] or "Sin nombre")
     c.metric("Fecha", date.today().strftime("%d/%m/%Y"))
-    st.markdown("### Funciones de INGENIA AI 4.5.1 PRO")
+    st.markdown("### Funciones de INGENIA AI 4.5.2 PRO")
     st.write("- Consultar dudas técnicas con un asistente de IA.")
     st.write("- Preparar borradores de informes técnicos.")
     st.write("- Analizar observaciones de obra y datos de avance.")
@@ -567,14 +578,18 @@ with normativa:
                         missing_nums = []
                         if len(chosen) > 1 and nums:
                             raise ValueError("Para consultar numerales exactos, selecciona una sola norma por consulta. Para comparar normas, usa una consulta temática sin numerales exactos.")
-                        for num in nums or [None]:
-                            found = exact_passages(num, chosen) if num else find_passages(question, chosen)
+                        for num in nums:
+                            found = exact_passages(num, chosen)
                             if not found:
-                                missing_nums.append(num or "consulta general")
-                                continue
-                            for p in found:
-                                if p not in passages:
-                                    passages.append(p)
+                                missing_nums.append(num)
+                            passages.extend(found)
+                        # Tables and explicit pages require full-page evidence even when a numeral matches.
+                        if not passages or re.search(r"(?i)tabla|p[aá]gina", question) or missing_nums:
+                            topical = find_passages(question, chosen)
+                            merged = {(p[1], p[2]): p for p in passages}
+                            merged.update({(p[1], p[2]): p for p in topical})
+                            passages = list(merged.values())
+                        passages = sorted(passages, key=lambda p: (p[1], p[2]))
                         if not passages:
                             raise ValueError("No se localizaron fragmentos. Revisa el numeral y documento.")
                         evidence = "\n\n".join(f"[{i}] {p[1]}, página PDF {p[2]}\n{p[3]}" for i,p in enumerate(passages, 1))
@@ -582,7 +597,7 @@ with normativa:
                                   "Genera UNA respuesta consolidada; si se solicita comparar, usa UNA sola tabla. "
                                   "Distingue documento, norma, numerales, condiciones, elementos y tipos de refuerzo. No mezcles requisitos de normas distintas. Conserva el encabezado de cada grupo de filas cuando continúa en otra página. "
                                   "No conviertas diámetros discretos en rangos. Conserva fórmulas como db y sus límites. "
-                                  "Incluye el ámbito y las excepciones de cada numeral. No inventes ni repitas filas. "
+                                  "Incluye todas las filas y subcategorías solicitadas, notas y excepciones expresas. No inventes ni repitas filas. No uses separadores decorativos ni tablas vacías. "
                                   "Cita cada fila y afirmación con [n]. Declara datos faltantes sin inferirlos. No confundas una mención a una tabla con su contenido. Si faltan filas, indica que no fueron recuperadas, no que no existen en la norma. "
                                   "Termina con una línea exacta FIN_RESPUESTA.\nConsulta: " + question +
                                   "\nNumerales no localizados: " + (", ".join(missing_nums) or "ninguno") + "\nEvidencia:\n" + evidence)
@@ -591,7 +606,7 @@ with normativa:
                         allowed = set(range(1, len(passages)+1))
                         answer = None
                         for attempt in range(2):
-                            candidate = call_ai(api_key, prompt, output_limit=6000)
+                            candidate = clean_response(call_ai(api_key, prompt, output_limit=6000))
                             cited = {int(n) for n in re.findall(r"\[(\d+)\]", candidate)}
                             if candidate.rstrip().endswith("FIN_RESPUESTA") and cited and cited <= allowed:
                                 answer = candidate.rstrip().removesuffix("FIN_RESPUESTA").rstrip()
@@ -623,5 +638,5 @@ with normativa:
                     st.text(fragment)
     st.info("Verifica las citas, la edición vigente y el documento oficial antes de aplicar requisitos en obra.")
 
-st.caption("INGENIA AI 4.5.1 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
+st.caption("INGENIA AI 4.5.2 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
 
