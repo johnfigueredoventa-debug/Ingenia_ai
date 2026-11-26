@@ -12,7 +12,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="INGENIA AI 5.0.1 PRO", page_icon="📐", layout="wide")
+st.set_page_config(page_title="INGENIA AI 5.1 PRO", page_icon="📐", layout="wide")
 
 # --------------------------- ESTILO -----------------------------------------
 st.markdown("""
@@ -60,7 +60,7 @@ Reglas de trabajo:
 6. Para cálculos estructurales, geotécnicos, hidráulicos y de seguridad, entrega orientación
    preliminar y solicita validación por un profesional habilitado y normativa local vigente.
 7. No declares que un diseño es seguro ni que cumple una norma si no hay información suficiente.
-8. Para código CAD/BIM, indica versión, dependencias, cómo ejecutarlo y cómo probarlo
+8. Prioriza el RNE peruano; no cites numerales sin evidencia. Para código CAD/BIM, indica versión, dependencias, cómo ejecutarlo y cómo probarlo
    primero en una copia del archivo/modelo.
 9. Si el usuario pide un informe, usa títulos, objetivo, datos de entrada, desarrollo,
    resultados, observaciones y pendientes de revisión.
@@ -153,7 +153,7 @@ def export_report(label, text, project, owner, fmt):
         sec.top_margin = sec.bottom_margin = Inches(.65)
         doc.styles['Normal'].font.name = 'Calibri'
         doc.styles['Normal'].font.size = Pt(10)
-        sec.header.paragraphs[0].text = 'INGENIA AI 5.0.1 PRO | Ingeniería Civil'
+        sec.header.paragraphs[0].text = 'INGENIA AI 5.1 PRO | Ingeniería Civil'
         doc.add_heading(label, 0)
         for m in meta: doc.add_paragraph(m)
         doc.add_paragraph(warning)
@@ -185,7 +185,7 @@ def export_report(label, text, project, owner, fmt):
         small = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10, splitLongWords=True)
         def p(s, style='Normal'):
             return Paragraph(html.escape(clean(s)), styles[style] if isinstance(style,str) else style)
-        story = [p('INGENIA AI 5.0.1 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
+        story = [p('INGENIA AI 5.1 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
         for kind,value in export_blocks(text):
             if kind == 'table':
                 width = landscape(A4)[0]-72
@@ -359,7 +359,7 @@ def exact_passages(num, files):
 
 # --------------------------- BARRA LATERAL ----------------------------------
 with st.sidebar:
-    st.markdown("## 📐 INGENIA AI 5.0.1 PRO")
+    st.markdown("## 📐 INGENIA AI 5.1 PRO")
     st.caption("INGENIERÍA · CONSTRUCCIÓN · CAD · BIM")
     st.info("Asistente técnico con IA")
     moneda = st.selectbox("Moneda", ["PEN (S/)", "USD ($)", "EUR (€)"])
@@ -381,7 +381,7 @@ with st.sidebar:
 
 # --------------------------- CABECERA ---------------------------------------
 st.markdown(
-    '<div class="hero"><h1>INGENIA AI 5.0.1 PRO</h1>'
+    '<div class="hero"><h1>INGENIA AI 5.1 PRO</h1>'
     '<p>Asistente inteligente para proyectos de Ingeniería Civil</p></div>',
     unsafe_allow_html=True,
 )
@@ -399,17 +399,17 @@ if not api_key:
     )
 
 # --------------------------- PESTAÑAS ---------------------------------------
-inicio, obra, informe, cad, bim, asistente, normativa, costos = st.tabs([
-    "🏠 Inicio", "🏗️ Gestión de obra", "📄 Informes", "📐 AutoCAD", "🏢 BIM / Revit", "🤖 Asistente IA", "📚 Normativa RNE", "💰 Metrados y costos"
+inicio, obra, informe, cad, bim, asistente, normativa, agentes, costos = st.tabs([
+    "🏠 Inicio", "🏗️ Gestión de obra", "📄 Informes", "📐 AutoCAD", "🏢 BIM / Revit", "🤖 Asistente IA", "📚 Normativa RNE", "🤖 Agentes IA", "💰 Metrados y costos"
 ])
 
 with inicio:
     st.subheader("Panel de trabajo")
     a, b, c = st.columns(3)
-    a.metric("Módulos", "7")
+    a.metric("Módulos", "8")
     b.metric("Proyecto activo", proyecto[:18] or "Sin nombre")
     c.metric("Fecha", date.today().strftime("%d/%m/%Y"))
-    st.markdown("### Funciones de INGENIA AI 5.0.1 PRO")
+    st.markdown("### Funciones de INGENIA AI 5.1 PRO")
     st.write("- Consultar dudas técnicas con un asistente de IA.")
     st.write("- Preparar borradores de informes técnicos.")
     st.write("- Analizar observaciones de obra y datos de avance.")
@@ -714,7 +714,7 @@ def excel_costos(items, proyecto, responsable, moneda, gg, util, igv):
     wb = Workbook(); wb.remove(wb.active)
     def sheet(name, headers, widths):
         ws = wb.create_sheet(name)
-        ws.append(["INGENIA AI 5.0.1 PRO | " + name]); ws.merge_cells(start_row=1,start_column=1,end_row=1,end_column=len(headers))
+        ws.append(["INGENIA AI 5.1 PRO | " + name]); ws.merge_cells(start_row=1,start_column=1,end_row=1,end_column=len(headers))
         ws.append([proyecto]); ws.merge_cells(start_row=2,start_column=1,end_row=2,end_column=len(headers))
         ws.append(headers)
         for i,w in enumerate(widths,1): ws.column_dimensions[get_column_letter(i)].width=w
@@ -763,6 +763,59 @@ def excel_costos(items, proyecto, responsable, moneda, gg, util, igv):
     r["A9"].font=Font(bold=True); r["B9"].font=Font(bold=True)
     out=BytesIO(); wb.save(out); return out.getvalue()
 
+def metrado_zapatas(n, largo, ancho, alto):
+    return n*largo*ancho*alto, n*2*(largo+ancho)*alto, n*largo*ancho
+
+def duplicados_apu(rows):
+    keys = [(str(r['Recurso']).strip().casefold(), str(r['Unidad']).strip().casefold()) for r in rows]
+    return len(keys) != len(set(keys))
+
+with agentes:
+    import pandas as pd
+    import math
+    st.subheader("Agente de metrados y costos — zapatas rectangulares")
+    st.caption("Geometría calculada por Python. No constituye diseño estructural.")
+    n = st.number_input("Cantidad de zapatas", min_value=1, value=10, key="ag_n")
+    l = st.number_input("Largo (m)", min_value=0.01, value=1.5, key="ag_l")
+    a = st.number_input("Ancho (m)", min_value=0.01, value=1.5, key="ag_a")
+    h = st.number_input("Altura (m)", min_value=0.01, value=0.5, key="ag_h")
+    vol, lateral, superior = metrado_zapatas(n,l,a,h)
+    st.metric("Concreto (m³)", f"{vol:.3f}")
+    st.metric("Caras laterales (m²)", f"{lateral:.3f}")
+    st.metric("Superficie superior (m²)", f"{superior:.3f}")
+    st.info("Encofrado real, excavación, relleno, acero y agua de curado requieren datos adicionales. No se presupuestan automáticamente.")
+    if st.button("Proponer recursos APU con IA", key="ag_propose"):
+        try:
+            prompt = "Propón recursos para colocación de concreto premezclado en zapatas, por m³ de partida. No incluyas acero, excavación ni encofrado. No inventes precios ni rendimientos. Devuelve exclusivamente JSON: una lista de objetos con Tipo (Material, Mano de obra, Equipo o Herramienta), Recurso y Unidad. Sin cantidades ni precios."
+            raw = call_ai(api_key,prompt,output_limit=1500).strip()
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw).strip()
+            obj = json.loads(raw)
+            if not isinstance(obj,list) or not 1 <= len(obj) <= 30: raise ValueError("Lista inválida")
+            rows=[]
+            for r in obj:
+                if not isinstance(r,dict) or r.get('Tipo') not in ['Material','Mano de obra','Equipo','Herramienta'] or any(not isinstance(r.get(k),str) or not r[k].strip() for k in ['Recurso','Unidad']): raise ValueError("Recurso inválido")
+                rows.append(dict(Tipo=r['Tipo'],Recurso=r['Recurso'].strip(),Unidad=r['Unidad'].strip(),Cantidad=None,Precio=None))
+            if duplicados_apu(rows): raise ValueError("La propuesta contiene duplicados")
+            st.session_state['ag_rows']=rows
+            st.session_state['ag_revision']=st.session_state.get('ag_revision',0)+1
+        except Exception as exc:
+            st.error("No se pudo validar la propuesta: "+str(exc))
+    if 'ag_rows' in st.session_state:
+        st.caption("Completa rendimientos y precios reales por unidad de partida. La IA solo propone recursos.")
+        df=st.data_editor(pd.DataFrame(st.session_state['ag_rows']).astype({'Cantidad':'float64','Precio':'float64'}),num_rows='dynamic',hide_index=True,key='ag_editor_'+str(st.session_state['ag_revision']),column_config={'Cantidad':st.column_config.NumberColumn(min_value=0.0),'Precio':st.column_config.NumberColumn(min_value=0.0),'Tipo':st.column_config.SelectboxColumn(options=['Material','Mano de obra','Equipo','Herramienta'])})
+        code=st.text_input("Código de partida", "01.01",key='ag_code')
+        approved=st.checkbox("He revisado los recursos, cantidades y precios",key='ag_approved')
+        if st.button("Añadir concreto al presupuesto",key='ag_save'):
+            rows=df.to_dict('records'); items=st.session_state.setdefault('presupuesto501',{})
+            if not approved or not code.strip() or not rows or any(not isinstance(r[k],str) or not r[k].strip() for r in rows for k in ['Tipo','Recurso','Unidad']) or any(pd.isna(r[k]) or not math.isfinite(float(r[k])) or float(r[k])<0 for r in rows for k in ['Cantidad','Precio']):
+                st.error("Completa y revisa todos los datos antes de guardar.")
+            elif duplicados_apu(rows): st.error("Hay recursos duplicados.")
+            elif code.strip() in items: st.error("El código ya existe. Usa otro código.")
+            elif any(i['moneda']!=moneda for i in items.values()): st.error("No mezcles monedas.")
+            else:
+                items[code.strip()]=dict(codigo=code.strip(),partida='Concreto en zapatas',unidad='m³',modo='Geometría simple',dims=[n,l,a,h],metrado=vol,recursos=rows,moneda=moneda)
+                st.success("Partida añadida. Abre Metrados y costos para descargar el Excel.")
+
 with costos:
     st.subheader("Metrados, APU y presupuesto")
     st.caption("Cálculo determinista por partida. Precios ingresados por el usuario, sin cotización automática. Moneda: " + moneda)
@@ -805,6 +858,8 @@ with costos:
             rows = [r for r in rows if r["Recurso"] or r["Cantidad"] or r["Precio"]]
             if not codigo.strip() or not partida.strip() or not rows or any(not str(r["Recurso"]).strip() or not str(r["Unidad"]).strip() for r in rows):
                 st.error("Completa código, partida, recurso y unidad de cada fila utilizada.")
+            elif duplicados_apu(rows):
+                st.error("Hay recursos duplicados. Revisa el APU.")
             elif items and any(i["moneda"] != moneda for i in items.values()):
                 st.error("No mezcles monedas en un presupuesto. Elimina las partidas anteriores o selecciona su moneda.")
             else:
@@ -831,4 +886,4 @@ with costos:
         except Exception as exc:
             st.error(f"No se pudo generar Excel: {exc}")
 
-st.caption("INGENIA AI 5.0.1 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
+st.caption("INGENIA AI 5.1 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
