@@ -12,7 +12,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="INGENIA AI 4.5.3 PRO", page_icon="📐", layout="wide")
+st.set_page_config(page_title="INGENIA AI 4.5.4 PRO", page_icon="📐", layout="wide")
 
 # --------------------------- ESTILO -----------------------------------------
 st.markdown("""
@@ -153,7 +153,7 @@ def export_report(label, text, project, owner, fmt):
         sec.top_margin = sec.bottom_margin = Inches(.65)
         doc.styles['Normal'].font.name = 'Calibri'
         doc.styles['Normal'].font.size = Pt(10)
-        sec.header.paragraphs[0].text = 'INGENIA AI 4.5.3 PRO | Ingeniería Civil'
+        sec.header.paragraphs[0].text = 'INGENIA AI 4.5.4 PRO | Ingeniería Civil'
         doc.add_heading(label, 0)
         for m in meta: doc.add_paragraph(m)
         doc.add_paragraph(warning)
@@ -185,7 +185,7 @@ def export_report(label, text, project, owner, fmt):
         small = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10, splitLongWords=True)
         def p(s, style='Normal'):
             return Paragraph(html.escape(clean(s)), styles[style] if isinstance(style,str) else style)
-        story = [p('INGENIA AI 4.5.3 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
+        story = [p('INGENIA AI 4.5.4 PRO','Title'),p(label,'Heading2')]+[p(m) for m in meta]+[p(warning),Spacer(1,12)]
         for kind,value in export_blocks(text):
             if kind == 'table':
                 width = landscape(A4)[0]-72
@@ -222,8 +222,21 @@ def tokens(text):
 
 @st.cache_data(show_spinner=False)
 def read_norm(path, modified):
+    import pymupdf
     reader = PdfReader(path)
-    return [(i, page.extract_text(extraction_mode="layout") or "") for i, page in enumerate(reader.pages, 1)]
+    pages = []
+    with pymupdf.open(path) as doc:
+        for i, page in enumerate(doc, 1):
+            text = reader.pages[i-1].extract_text(extraction_mode="layout") or ""
+            if len(re.findall(r"\w", text)) < 80:
+                try:
+                    tp = page.get_textpage_ocr(language="spa", dpi=200, full=True)
+                    text = page.get_text(textpage=tp, sort=True)
+                except Exception as exc:
+                    raise RuntimeError(f"OCR no disponible o fallido en página {i}. Verifica packages.txt y el idioma español: {exc}") from exc
+                text = "[Texto OCR: verificar cifras y símbolos en el original]\n" + text if text.strip() else ""
+            pages.append((i, text))
+    return pages
 
 def find_passages(question, files):
     import math
@@ -320,7 +333,7 @@ def exact_passages(num, files):
 
 # --------------------------- BARRA LATERAL ----------------------------------
 with st.sidebar:
-    st.markdown("## 📐 INGENIA AI 4.5.3 PRO")
+    st.markdown("## 📐 INGENIA AI 4.5.4 PRO")
     st.caption("INGENIERÍA · CONSTRUCCIÓN · CAD · BIM")
     st.info("Asistente técnico con IA")
     moneda = st.selectbox("Moneda", ["PEN (S/)", "USD ($)", "EUR (€)"])
@@ -342,7 +355,7 @@ with st.sidebar:
 
 # --------------------------- CABECERA ---------------------------------------
 st.markdown(
-    '<div class="hero"><h1>INGENIA AI 4.5.3 PRO</h1>'
+    '<div class="hero"><h1>INGENIA AI 4.5.4 PRO</h1>'
     '<p>Asistente inteligente para proyectos de Ingeniería Civil</p></div>',
     unsafe_allow_html=True,
 )
@@ -370,7 +383,7 @@ with inicio:
     a.metric("Módulos", "6")
     b.metric("Proyecto activo", proyecto[:18] or "Sin nombre")
     c.metric("Fecha", date.today().strftime("%d/%m/%Y"))
-    st.markdown("### Funciones de INGENIA AI 4.5.3 PRO")
+    st.markdown("### Funciones de INGENIA AI 4.5.4 PRO")
     st.write("- Consultar dudas técnicas con un asistente de IA.")
     st.write("- Preparar borradores de informes técnicos.")
     st.write("- Analizar observaciones de obra y datos de avance.")
@@ -557,7 +570,7 @@ with asistente:
 
 with normativa:
     st.subheader("Biblioteca normativa RNE")
-    st.caption("Consulta documentos locales con referencias a páginas del PDF.")
+    st.caption("Consulta documentos digitales y escaneados con referencias a páginas del PDF. El OCR puede contener errores; verifica el original.")
     files = sorted(f for f in NORM_DIR.iterdir() if f.is_file() and f.suffix.lower() == ".pdf") if NORM_DIR.is_dir() else []
     catalog = {"020": "Cargas", "030": "Diseño Sismorresistente", "050": "Suelos y Cimentaciones", "060": "Concreto Armado", "070": "Albañilería", "090": "Estructuras Metálicas"}
     def norm_code(name):
@@ -576,7 +589,7 @@ with normativa:
             else:
                 st.session_state.pop("norm_result", None)
                 try:
-                    with st.spinner("Buscando fragmentos y consultando IA..."):
+                    with st.spinner("Leyendo documentos (OCR si es necesario; la primera consulta puede tardar varios minutos) y consultando IA..."):
                         chosen = [f for f in files if f.name in selected]
                         requested = set(re.findall(r"(?i)\bE[ ._-]?(\d{3})(?!\d)", question))
                         if requested:
@@ -655,5 +668,5 @@ with normativa:
                     st.text(fragment)
     st.info("Verifica las citas, la edición vigente y el documento oficial antes de aplicar requisitos en obra.")
 
-st.caption("INGENIA AI 4.5.3 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
+st.caption("INGENIA AI 4.5.4 PRO · Asistente de apoyo. Verifica cálculos, normativa, diseños y código con profesionales competentes.")
 
